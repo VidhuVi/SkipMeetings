@@ -8,6 +8,7 @@ __pycache__/
 env/
 venv/
 *.env # Ignore .env files directly (crucial for API keys!)
+.env
 .pytest_cache/
 .coverage
 htmlcov/
