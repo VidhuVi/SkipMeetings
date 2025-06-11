@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.env # Ignore .env files directly (crucial for API keys!)
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+dist/
+build/
+*.egg-info/
+.ipynb_checkpoints # If using Jupyter notebooks
+
+# VS Code
+.vscode/ # Project-specific VS Code settings (can be included if shared, but often ignored)
+
+# macOS
+.DS_Store
+
+# Gradio specific
+# If gradio creates temporary files or caches, list them here if you encounter them
+# .gradio_cache/
