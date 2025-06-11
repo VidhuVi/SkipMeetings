@@ -7,7 +7,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import BaseMessage
-import os
 import time
 from dotenv import load_dotenv
 from langchain_core.tools import tool
@@ -17,8 +16,8 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 # Ensure API key is set
-if "GOOGLE_API_KEY" not in os.environ:
-    raise ValueError("GOOGLE_API_KEY environment variable not set. Please ensure you have a .env file with GOOGLE_API_KEY='YOUR_API_KEY'")
+# if "GOOGLE_API_KEY" not in os.environ:
+#     raise ValueError("GOOGLE_API_KEY environment variable not set. Please ensure you have a .env file with GOOGLE_API_KEY='YOUR_API_KEY'")
 
 # Initialize LLM
 llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7)
