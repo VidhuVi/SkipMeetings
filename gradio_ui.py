@@ -3,20 +3,21 @@ import gradio as gr
 import os
 from dotenv import load_dotenv
 import pypdf
+import time # Remove this if you no longer need time.sleep() for other reasons
 
 # Load environment variables
 load_dotenv()
 
+# Import the function that runs your LangGraph app
 from app import get_meeting_summary_report
 
-
+# --- Helper function to read content from uploaded file ---
 def read_file_content(file_obj) -> str:
+    """Reads content from an uploaded file object (txt or pdf)."""
     if file_obj is None:
         return ""
-
     file_path = file_obj.name
     file_extension = os.path.splitext(file_path)[1].lower()
-
     if file_extension == ".txt":
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -39,8 +40,12 @@ def read_file_content(file_obj) -> str:
         gr.Warning(f"Unsupported file type: {file_extension}. Please upload a .txt or .pdf file.")
         return ""
 
-
+# --- Unified function to handle both file and text input (retains gr.Progress if you still want it) ---
 def unified_summarize_input(uploaded_file, pasted_text, progress=gr.Progress()):
+    """
+    This function handles both file and text input,
+    processes the correct input, and updates the progress bar (if gr.Progress works).
+    """
     progress(0, desc="Initializing...")
 
     transcript_text = ""
@@ -62,6 +67,7 @@ def unified_summarize_input(uploaded_file, pasted_text, progress=gr.Progress()):
 
     try:
         report = get_meeting_summary_report(transcript_text)
+        # REMOVED: time.sleep(3) that was added for debugging
         progress(0.9, desc="Finalizing report...")
         return report
     except Exception as e:
@@ -71,75 +77,7 @@ def unified_summarize_input(uploaded_file, pasted_text, progress=gr.Progress()):
     finally:
         progress(1.0, desc="Done.")
 
-
-# --- Spinner controller functions ---
-def show_spinner():
-    return gr.update(value="<div class='spinner'></div>", visible=True)
-
-
-def hide_spinner():
-    return gr.update(value="", visible=False)
-
-
-# --- Gradio App UI ---
-with gr.Blocks(title="Intelligent Meeting Summarizer") as demo:
-    gr.HTML("""
-    <style>
-    .spinner {
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #3498db;
-      border-radius: 50%;
-      width: 30px;
-      height: 30px;
-      animation: spin 1s linear infinite;
-      margin: 10px auto;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    </style>
-    """)
-
-    gr.Markdown("# 🚀 Intelligent Meeting Summarizer AI")
-    gr.Markdown("Choose your preferred input method: upload a file or paste your meeting transcript directly.")
-
-    with gr.Column():
-        with gr.Tabs():
-            with gr.TabItem("Upload File"):
-                transcript_file_input = gr.File(
-                    label="Upload Meeting Transcript (.txt or .pdf)",
-                    file_types=[".txt", ".pdf"],
-                    type="filepath"
-                )
-            with gr.TabItem("Paste Text"):
-                transcript_text_input = gr.Textbox(
-                    lines=5,
-                    label="Paste Meeting Transcript Here",
-                    placeholder="e.g., John: Let's discuss the Q3 budget. Sarah: I'll send the report next Wednesday..."
-                )
-
-        submit_button = gr.Button("Generate Report")
-
-        spinner = gr.HTML(value="", visible=False)  # Spinner element
-
-    output_report = gr.Markdown(label="Generated Meeting Report")
-
-    # Button click sequence: show spinner → summarize → hide spinner
-    submit_button.click(
-        fn=show_spinner,
-        outputs=spinner,
-        queue=False
-    ).then(
-        fn=unified_summarize_input,
-        inputs=[transcript_file_input, transcript_text_input],
-        outputs=output_report
-    ).then(
-        fn=hide_spinner,
-        outputs=spinner,
-        queue=False
-    )
-
+# --- REMOVED: show_spinner() and hide_spinner() functions ---
 
 # --- Function to create and return the Gradio Blocks app ---
 def create_gradio_blocks_app():
@@ -147,6 +85,9 @@ def create_gradio_blocks_app():
     Creates and returns the Gradio Blocks app instance.
     """
     with gr.Blocks(title="Intelligent Meeting Summarizer") as demo:
+        # REMOVED: demo.css for the spinner
+        # REMOVED: gr.HTML for CSS if it was there
+
         gr.Markdown("# 🚀 Intelligent Meeting Summarizer AI")
         gr.Markdown("Choose your preferred input method: upload a file or paste your meeting transcript directly.")
 
@@ -167,24 +108,28 @@ def create_gradio_blocks_app():
             
             submit_button = gr.Button("Generate Report")
             
+            # REMOVED: spinner = gr.HTML(...)
+
         output_report = gr.Markdown(
             label="Generated Meeting Report"
         )
 
+        # Updated Button click: Direct call to unified_summarize_input
         submit_button.click(
             fn=unified_summarize_input,
             inputs=[transcript_file_input, transcript_text_input],
             outputs=output_report,
             api_name="summarize",
+            # If gr.Progress() also doesn't visually work, you can try
+            # show_progress="full" here again, though you mentioned it didn't work previously.
+            # No need to add it if you're happy without an explicit spinner.
         )
     return demo
 
-# --- Main execution block for local testing (UNCHANGED logic) ---
-# This block only runs when gradio_ui.py is executed directly.
-# When imported by FastAPI, this block is skipped.
+# --- Main execution block for local testing ---
 if __name__ == "__main__":
     print("Launching Gradio interface locally...")
-    app = create_gradio_blocks_app() # Call the new function to get the app
+    app = create_gradio_blocks_app()
     app.launch(
         share=False,
         inbrowser=True
