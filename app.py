@@ -1,12 +1,9 @@
 # app.py
 import json
 from typing import TypedDict, List, Dict, Union, Optional
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import BaseMessage
 import time
 from dotenv import load_dotenv
 from langchain_core.tools import tool
@@ -14,19 +11,14 @@ from pydantic import BaseModel, Field
 
 # Load environment variables from .env file
 load_dotenv()
-
-# Ensure API key is set
-# if "GOOGLE_API_KEY" not in os.environ:
-#     raise ValueError("GOOGLE_API_KEY environment variable not set. Please ensure you have a .env file with GOOGLE_API_KEY='YOUR_API_KEY'")
-
 # Initialize LLM
-llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7)
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.6)
 
 # AgentState 
 class AgentState(TypedDict):
     raw_transcript: str
     cleaned_transcript: Optional[str]
-    extracted_data: Optional[Dict[str, Union[List[str], str, List[Dict]]]] # Updated to include List[Dict] if needed later, and allows more varied data
+    extracted_data: Optional[Dict[str, Union[List[str], str, List[Dict]]]]
     meeting_summary: Optional[str]
     action_items: Optional[List[Dict[str, str]]]
     key_decisions: Optional[List[Dict[str, str]]]
@@ -34,13 +26,16 @@ class AgentState(TypedDict):
     next_node: Optional[str]
 
 class ActionItem(BaseModel):
-    what: str = Field(description="A concise summary of the action to be done.")
-    who: str = Field(description="The person responsible for the action. Use 'N/A' if not identified.")
-    when: str = Field(description="The deadline or timeline for the action. Use 'N/A' if not identified.")
+    what: str = Field(description="A very short and concise summary of the action to be done.")
+    who: str = Field(description="The person/group/team/committee responsible for the action. Use 'N/A' if not identified.")
+    when: str = Field(description="The deadline or timeline or date for the action. Use 'N/A' if not identified.")
 
 class Decision(BaseModel):
-    decision: str = Field(description="The key decision made.")
-    category: str = Field(description="The category of the decision (e.g., 'General', 'Strategic', 'Operational', 'Technical').")
+    decision: str = Field(description="The key decision or motion made.")
+    category: str = Field(description="The category of the decision (e.g., 'General', 'Strategic', 'Operational', 'Technical', 'Financial').")
+    supported_count: Optional[int] = Field(default=0, description="The number of individuals or votes supporting the decision. Default to 0 if not specified.")
+    abstained_count: Optional[int] = Field(default=0, description="The number of individuals or votes abstaining from the decision. Default to 0 if not specified.")
+    against_count: Optional[int] = Field(default=0, description="The number of individuals or votes against the decision. Default to 0 if not specified.")
 
 class AllActions(BaseModel):
     action_items: List[ActionItem] = Field(description="A list of all identified action items.")
@@ -181,7 +176,17 @@ def final_reporter_agent(state: AgentState) -> AgentState:
         for i, decision in enumerate(key_decisions):
             # Format each decision clearly
             report_sections.append(f"- **Decision {i+1}:** {decision.get('decision', 'N/A')}")
-            report_sections.append(f"  * Category: {decision.get('category', 'General')}\n") # Newline for spacing after each item
+            report_sections.append(f"  * Category: {decision.get('category', 'General')}")
+            
+            supported = decision.get('supported_count', 0)
+            abstained = decision.get('abstained_count', 0)
+            against = decision.get('against_count', 0)
+
+            # Only show counts if at least one is non-zero
+            if supported > 0 or abstained > 0 or against > 0:
+                report_sections.append(f"  * Vote: Supported: {supported}, Abstained: {abstained}, Against: {against}\n")
+            else:
+                report_sections.append("\n") # Add a newline for spacing even if no vote counts
     else:
         report_sections.append("No key decisions identified.\n") # Message if no decisions
 
@@ -299,25 +304,20 @@ def action_decision_extractor_agent(state: AgentState) -> AgentState:
         print("  - Error: No cleaned transcript found for extraction.")
         return updated_state
 
-    # IMPORTANT: Use with_structured_output to directly get structured data.
-    # This replaces the multiple LLM calls inside your previous @tool definitions.
-
-    # 1. Extract Action Items
-    # We pass the Pydantic schema (ActionItem) and get the LLM to directly output it.
-    action_extractor_llm = llm.with_structured_output(ActionItem, method="json_mode")
-    # For Gemini, "json_mode" usually implies it will return a JSON object that matches
-    # the schema, leveraging its function calling capabilities implicitly.
-
-    # Instead of an LLM call per action, let's try to get a list of actions in one go.
-    # This requires the LLM to output a list of ActionItem.
     class AllActions(BaseModel):
         action_items: List[ActionItem] = Field(description="A list of all identified action items.")
 
     action_list_extractor_llm = llm.with_structured_output(AllActions, method="json_mode")
 
     action_prompt = f"""
-    Analyze the following meeting transcript and identify all explicit or implied action items.
-    For each action item, extract: 'what' (concise description), 'who' (person responsible, use 'N/A' if not identified), and 'when' (deadline/timeline, use 'N/A' if not identified).
+    Analyze the following meeting transcript to identify all **explicit or strongly implied action items/tasks/events**.
+    For each action item, extract the following three details, strictly adhering to the schema:
+    1.  **'what'**: A concise, short, clear description of the task or action or scheduled event.
+    2.  **'who'**: The specific person, team, committee or group responsible or accountable. If no assignee is explicitly mentioned, use "N/A".
+    3.  **'when'**: The deadline or specific timeline. If no deadline is explicitly mentioned, use "N/A".
+
+    **Important:** Only include action items that are clearly stated. Do NOT invent actions, assignees, or deadlines.
+    Your output MUST be a JSON object containing a list of these structured action items, exactly conforming to the provided schema.
 
     --- MEETING TRANSCRIPT ---
     {cleaned_transcript}
@@ -340,7 +340,6 @@ def action_decision_extractor_agent(state: AgentState) -> AgentState:
         --- ACTION ITEMS ---
         """
         raw_actions_response = llm.invoke([HumanMessage(content=action_prompt_fallback)])
-        # Manually parse and create ActionItem dicts (simpler, but less structured)
         raw_actions_list = [item.strip() for item in raw_actions_response.content.split('\n') if item.strip()]
         structured_actions = []
         for raw_action in raw_actions_list:
@@ -363,32 +362,43 @@ def action_decision_extractor_agent(state: AgentState) -> AgentState:
     decision_list_extractor_llm = llm.with_structured_output(AllDecisions, method="json_mode")
 
     decision_prompt = f"""
-    Analyze the following meeting transcript and identify all explicit key decisions made.
-    For each decision, extract: 'decision' (the main decision text) and 'category' (e.g., 'General', 'Strategic', 'Operational', 'Technical').
+    Analyze the following meeting transcript to identify all **explicit key decisions, resolutions, or motions that were made and/or voted upon**.
+    For each decision, extract:
+    1.  **'decision'**: The full text of the key decision or motion.
+    2.  **'category'**: Categorize the decision. Choose from 'General', 'Strategic', 'Operational', 'Technical', or 'Financial'. If unsure, default to 'General'.
+    3.  **'supported_count'**: The number of individuals or votes explicitly stated as supporting the decision. If not specified, default to 0.
+    4.  **'abstained_count'**: The number of individuals or votes explicitly stated as abstaining from the decision. If not specified, default to 0.
+    5.  **'against_count'**: The number of individuals or votes explicitly stated as being against the decision. If not specified, default to 0.
+
+    **Important:** Only include decisions that are clearly stated as agreed-upon outcomes or motions/resolutions put to a vote. Do NOT invent decisions, categories, or counts.
+    Try and avoid that are implied like decisions that state that the current meeting minutes are approved and current meeting is adjourned.
+    Strictly avoid listing decisions that have already been made.
+    Also provide context for the decision if it is not explicitly stated in the decision text (for example: "Move Previous Question", etc.).
+    If vote counts (supported, abstained, against) are not explicitly mentioned, assume 0 for those fields.
+    Your output MUST be a JSON object containing a list of these structured decisions, exactly conforming to the provided schema.
 
     --- MEETING TRANSCRIPT ---
     {cleaned_transcript}
     """
     try:
-        # One LLM call to get all structured decisions
         extracted_decisions_obj = decision_list_extractor_llm.invoke([HumanMessage(content=decision_prompt)])
-        structured_decisions = [item.model_dump() for item in extracted_decisions_obj.key_decisions] # Convert Pydantic objects to dicts
+        structured_decisions = [item.model_dump() for item in extracted_decisions_obj.key_decisions]
     except Exception as e:
         print(f"ERROR: Failed to extract structured decisions: {e}")
         print("Falling back to a simpler extraction method for decisions.")
-        # Fallback to original, less efficient method
+        # Fallback will be less accurate for counts, but prevents a crash
         decision_prompt_fallback = f"""
         Analyze the following meeting transcript and identify all explicit key decisions made.
-        List each decision on a new line.
-
+        List each decision on a new line. Format as "Decision: ..., Category: ...".
         --- MEETING TRANSCRIPT ---
         {cleaned_transcript}
         --- KEY DECISIONS ---
         """
         raw_decisions_response = llm.invoke([HumanMessage(content=decision_prompt_fallback)])
         raw_decisions_list = [item.strip() for item in raw_decisions_response.content.split('\n') if item.strip()]
-        structured_decisions = [{"decision": raw_decision, "category": "General"} for raw_decision in raw_decisions_list]
-        time.sleep(2) # Add a delay for fallback
+        # Default counts to 0 in fallback
+        structured_decisions = [{"decision": raw_decision, "category": "General", "supported_count": 0, "abstained_count": 0, "against_count": 0} for raw_decision in raw_decisions_list]
+        time.sleep(2)
 
 
     updated_state["key_decisions"] = structured_decisions

@@ -3,13 +3,13 @@ import gradio as gr
 import os
 from dotenv import load_dotenv
 import pypdf
-import time # Remove this if you no longer need time.sleep() for other reasons
-
-# Load environment variables
+from validator import TranscriptValidator
 load_dotenv()
 
 # Import the function that runs your LangGraph app
 from app import get_meeting_summary_report
+
+transcript_validator = TranscriptValidator()
 
 # --- Helper function to read content from uploaded file ---
 def read_file_content(file_obj) -> str:
@@ -42,14 +42,11 @@ def read_file_content(file_obj) -> str:
 
 # --- Unified function to handle both file and text input (retains gr.Progress if you still want it) ---
 def unified_summarize_input(uploaded_file, pasted_text, progress=gr.Progress()):
-    """
-    This function handles both file and text input,
-    processes the correct input, and updates the progress bar (if gr.Progress works).
-    """
     progress(0, desc="Initializing...")
 
     transcript_text = ""
 
+    # Existing logic to get transcript_text from file or pasted text
     if uploaded_file is not None:
         progress(0.05, desc="Reading uploaded file...")
         transcript_text = read_file_content(uploaded_file)
@@ -63,11 +60,20 @@ def unified_summarize_input(uploaded_file, pasted_text, progress=gr.Progress()):
         progress(1.0, desc="Error")
         return "Please either upload a transcript file or paste text into the textbox."
 
+    # --- VALIDATION STEP ---
+    progress(0.1, desc="Validating input content...")
+    is_valid_transcript = transcript_validator.validate(transcript_text)
+
+    if not is_valid_transcript:
+        progress(1.0, desc="Validation Failed")
+        gr.Warning("The provided text does not appear to be a meeting transcript or related content. Please upload/paste relevant text.")
+        return "The provided text does not appear to be a meeting transcript or related content. Please upload/paste relevant text."
+    # --- END VALIDATION STEP ---
+
     progress(0.2, desc="Starting AI summarization pipeline...")
 
     try:
         report = get_meeting_summary_report(transcript_text)
-        # REMOVED: time.sleep(3) that was added for debugging
         progress(0.9, desc="Finalizing report...")
         return report
     except Exception as e:
@@ -77,16 +83,12 @@ def unified_summarize_input(uploaded_file, pasted_text, progress=gr.Progress()):
     finally:
         progress(1.0, desc="Done.")
 
-# --- REMOVED: show_spinner() and hide_spinner() functions ---
-
 # --- Function to create and return the Gradio Blocks app ---
 def create_gradio_blocks_app():
     """
     Creates and returns the Gradio Blocks app instance.
     """
     with gr.Blocks(title="Intelligent Meeting Summarizer") as demo:
-        # REMOVED: demo.css for the spinner
-        # REMOVED: gr.HTML for CSS if it was there
 
         gr.Markdown("# 🚀 Intelligent Meeting Summarizer AI")
         gr.Markdown("Choose your preferred input method: upload a file or paste your meeting transcript directly.")
@@ -107,22 +109,18 @@ def create_gradio_blocks_app():
                     )
             
             submit_button = gr.Button("Generate Report")
-            
-            # REMOVED: spinner = gr.HTML(...)
 
         output_report = gr.Markdown(
             label="Generated Meeting Report"
         )
 
-        # Updated Button click: Direct call to unified_summarize_input
+        # Button click: Direct call to unified_summarize_input
         submit_button.click(
             fn=unified_summarize_input,
             inputs=[transcript_file_input, transcript_text_input],
             outputs=output_report,
             api_name="summarize",
-            # If gr.Progress() also doesn't visually work, you can try
-            # show_progress="full" here again, though you mentioned it didn't work previously.
-            # No need to add it if you're happy without an explicit spinner.
+            show_progress="full"
         )
     return demo
 
