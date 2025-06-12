@@ -141,9 +141,51 @@ with gr.Blocks(title="Intelligent Meeting Summarizer") as demo:
     )
 
 
+# --- Function to create and return the Gradio Blocks app ---
+def create_gradio_blocks_app():
+    """
+    Creates and returns the Gradio Blocks app instance.
+    """
+    with gr.Blocks(title="Intelligent Meeting Summarizer") as demo:
+        gr.Markdown("# 🚀 Intelligent Meeting Summarizer AI")
+        gr.Markdown("Choose your preferred input method: upload a file or paste your meeting transcript directly.")
+
+        with gr.Column():
+            with gr.Tabs():
+                with gr.TabItem("Upload File"):
+                    transcript_file_input = gr.File(
+                        label="Upload Meeting Transcript (.txt or .pdf)",
+                        file_types=[".txt", ".pdf"],
+                        type="filepath"
+                    )
+                with gr.TabItem("Paste Text"):
+                    transcript_text_input = gr.Textbox(
+                        lines=5,
+                        label="Paste Meeting Transcript Here",
+                        placeholder="e.g., John: Let's discuss the Q3 budget. Sarah: I'll send the report next Wednesday..."
+                    )
+            
+            submit_button = gr.Button("Generate Report")
+            
+        output_report = gr.Markdown(
+            label="Generated Meeting Report"
+        )
+
+        submit_button.click(
+            fn=unified_summarize_input,
+            inputs=[transcript_file_input, transcript_text_input],
+            outputs=output_report,
+            api_name="summarize",
+        )
+    return demo
+
+# --- Main execution block for local testing (UNCHANGED logic) ---
+# This block only runs when gradio_ui.py is executed directly.
+# When imported by FastAPI, this block is skipped.
 if __name__ == "__main__":
     print("Launching Gradio interface locally...")
-    demo.launch(
+    app = create_gradio_blocks_app() # Call the new function to get the app
+    app.launch(
         share=False,
         inbrowser=True
     )
