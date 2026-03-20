@@ -16,7 +16,13 @@ def read_file_content(file_obj) -> str:
     """Reads content from an uploaded file object (txt or pdf)."""
     if file_obj is None:
         return ""
-    file_path = file_obj.name
+    
+    # Check if object is a string path or has a name attribute
+    if isinstance(file_obj, str):
+        file_path = file_obj
+    else:
+        file_path = getattr(file_obj, 'name', str(file_obj))
+
     file_extension = os.path.splitext(file_path)[1].lower()
     if file_extension == ".txt":
         try:
