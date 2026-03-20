@@ -10,7 +10,7 @@ load_dotenv()
 class TranscriptValidator:
     def __init__(self):
         # Using a low temperature for deterministic classification
-        self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1)
+        self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
 
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", "You are an expert text classifier. Your task is to determine if the given text is a meeting transcript, meeting notes, an agenda, or any other content directly related to a business or academic meeting. Respond with ONLY 'YES' if it is, and 'NO' if it is not. Provide no other text or explanation."),
