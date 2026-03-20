@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 # Load environment variables from .env file
 load_dotenv()
 # Initialize LLM
-llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.6)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.6)
 
 # AgentState 
 class AgentState(TypedDict):
